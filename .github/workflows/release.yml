@@ -1,0 +1,42 @@
+name: Create Release PR
+
+on:
+  pull_request:
+    branches:
+     - 'feature/github_actions'
+
+jobs:
+  build:
+    name: create release PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      # 前回のタグ（アクション実行時は最新）を比較対象として抽出する
+      - name: get previous tag
+        id: get_previous_tag
+        run: |
+          PREVIOUS_TAG=$(git tag --sort=-creatordate | grep -E '^[0-9]*\.[0-9]*\.[0-9]*\-[0-9]*' | sed -n 1p)
+          echo "PREVIOUS_TAG: $PREVIOUS_TAG"
+          echo "PREVIOUS_TAG=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+
+      # 新しいタグ名を用意する
+      - name: generate latest tag
+        id: generate_latest_tag
+        run: |
+          VERSION_NAME=$(cat gradle.properties | grep "VERSION_NAME" | cut -d "=" -f 2)
+          VERSION_CODE=$(cat gradle.properties | grep "VERSION_CODE" | cut -d "=" -f 2)
+          echo "LATEST_TAG: ${VERSION_NAME}-${VERSION_CODE}"
+          echo "LATEST_TAG=${VERSION_NAME}-${VERSION_CODE}" >> $GITHUB_OUTPUT
+
+      # 変更点を取得する
+      - name: generate release note
+        id: generate_release_note
+        run: |
+          NOTES=$(curl -X POST -H 'Accept: application/vnd.github.v3+json' -H 'authorization: Bearer ${{secrets.GITHUB_TOKEN}}' https://api.github.com/repos/${{github.repository}}/releases/generate-notes -d '{"configuration_file_path":".github/release.yml","target_commitish":"feature/github_actions","tag_name":"${{steps.generate_latest_tag.outputs.LATEST_TAG}}","previous_tag_name":"${{steps.get_previous_tag.outputs.PREVIOUS_TAG}}"}' | jq .body | sed 's/\"//g')
+          echo "NOTES: $NOTES"
+          echo "NOTES=$NOTES" >> $GITHUB_OUTPUT
+        shell: bash
